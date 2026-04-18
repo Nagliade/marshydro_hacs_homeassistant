@@ -1,6 +1,8 @@
 import ssl
 import json
 import os
+import time
+import threading
 import paho.mqtt.client as mqtt
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -13,12 +15,16 @@ class MarsCoordinator(DataUpdateCoordinator):
 
         self.mac = mac
         self.data = {}
+        self._connected = False
 
         # =========================
         # MQTT CLIENT
         # =========================
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(client_id=f"mars_{mac}", clean_session=True)
         self.client.username_pw_set(username, password)
+
+        # Auto-Reconnect Settings
+        self.client.reconnect_delay_set(min_delay=5, max_delay=60)
 
         # =========================
         # TLS SETUP
@@ -27,21 +33,11 @@ class MarsCoordinator(DataUpdateCoordinator):
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
 
-        # 👉 Zertifikate aus dem gleichen Ordner laden
         base_path = os.path.dirname(__file__)
-
         cert_file = os.path.join(base_path, "emqx-marspro.pem")
         key_file = os.path.join(base_path, "emqx-marspro.key")
 
-        if not os.path.exists(cert_file) or not os.path.exists(key_file):
-            print("❌ MarsPro Zertifikate NICHT gefunden!")
-            print("Pfad:", base_path)
-        else:
-            try:
-                ctx.load_cert_chain(certfile=cert_file, keyfile=key_file)
-                print("✅ Zertifikate erfolgreich geladen")
-            except Exception as e:
-                print("❌ Fehler beim Laden der Zertifikate:", e)
+        ctx.load_cert_chain(cert_file, keyfile=key_file)
 
         self.client.tls_set_context(ctx)
 
@@ -49,24 +45,45 @@ class MarsCoordinator(DataUpdateCoordinator):
         # CALLBACKS
         # =========================
         self.client.on_connect = self._on_connect
-        self.client.on_message = self._on_message
         self.client.on_disconnect = self._on_disconnect
+        self.client.on_message = self._on_message
 
         # =========================
-        # CONNECT
+        # START THREAD
         # =========================
-        self.client.connect(MARS_HOST, MARS_PORT)
-        self.client.loop_start()
+        self._start_mqtt()
 
     # =========================
-    # MQTT EVENTS
+    # START MQTT LOOP
+    # =========================
+    def _start_mqtt(self):
+        def run():
+            while True:
+                try:
+                    print("🔌 Connecting to Mars MQTT...")
+                    self.client.connect(MARS_HOST, MARS_PORT, keepalive=60)
+                    self.client.loop_forever()
+                except Exception as e:
+                    print("❌ MQTT Fehler:", e)
+                    time.sleep(5)
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+
+    # =========================
+    # EVENTS
     # =========================
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         print("✅ Mars MQTT connected:", rc)
+        self._connected = True
 
         topic = f"MHPRO/CB43/API/UP/{self.mac}"
         client.subscribe(topic)
         print("📡 Subscribed to:", topic)
+
+    def _on_disconnect(self, client, userdata, rc, properties=None):
+        self._connected = False
+        print("⚠️ Mars MQTT disconnected:", rc)
 
     def _on_message(self, client, userdata, msg):
         try:
@@ -77,21 +94,7 @@ class MarsCoordinator(DataUpdateCoordinator):
                 return
 
             self.data = data["data"]
-
-            # 👉 Home Assistant updaten
             self.async_set_updated_data(self.data)
 
         except Exception as e:
             print("❌ Mars MQTT Error:", e)
-
-    def _on_disconnect(self, client, userdata, rc, properties=None):
-        print("⚠️ Mars MQTT disconnected:", rc)
-
-        while True:
-            try:
-                print("🔄 Reconnecting...")
-                client.reconnect()
-                break
-            except Exception:
-                import time
-                time.sleep(5)
