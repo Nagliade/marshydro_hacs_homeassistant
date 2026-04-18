@@ -1,7 +1,7 @@
 {
   "domain": "marspro",
   "name": "MarsPro MQTT",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "documentation": "https://github.com/yourname/marspro-hacs",
   "requirements": [
     "paho-mqtt"
