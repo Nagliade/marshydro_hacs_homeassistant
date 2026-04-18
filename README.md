@@ -106,6 +106,7 @@ Nach erfolgreicher Einrichtung erscheint dein Gerät in Home Assistant mit:
 ---
 
 
+
 ## 🔥 Roadmap
 
 * [ ] Lichtsteuerung (AN/AUS)
