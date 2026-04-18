@@ -1,6 +1,7 @@
 {
   "name": "MarsPro MQTT",
   "content_in_root": false,
-  "domains": ["marspro"],
-  "iot_class": "cloud_polling"
+  "domains": [
+    "marspro"
+  ]
 }

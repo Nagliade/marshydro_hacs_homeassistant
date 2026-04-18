@@ -14,13 +14,10 @@ SENSORS = {
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
-
     entities = []
     for key, (name, unit) in SENSORS.items():
         entities.append(MarsSensor(coordinator, key, name, unit))
-
     async_add_entities(entities)
-
 
 class MarsSensor(SensorEntity):
     def __init__(self, coordinator, key, name, unit):

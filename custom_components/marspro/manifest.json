@@ -1,10 +1,14 @@
 {
   "domain": "marspro",
   "name": "MarsPro MQTT",
-  "version": "1.0.0",
-  "documentation": "https://github.com/Nagliade/marshydro_hacs_homeassistant",
-  "requirements": ["paho-mqtt"],
-  "codeowners": ["@Nagliade"],
+  "version": "1.0.1",
+  "documentation": "https://github.com/yourname/marspro-hacs",
+  "requirements": [
+    "paho-mqtt"
+  ],
+  "codeowners": [
+    "@yourname"
+  ],
   "config_flow": true,
   "iot_class": "cloud_polling"
 }
