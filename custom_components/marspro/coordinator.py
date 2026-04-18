@@ -13,6 +13,7 @@ class MarsCoordinator(DataUpdateCoordinator):
     def __init__(self, hass, mac, username, password):
         super().__init__(hass, None, name="MarsPro")
 
+        self.hass = hass
         self.mac = mac
         self.data = {}
         self._connected = False
@@ -22,39 +23,54 @@ class MarsCoordinator(DataUpdateCoordinator):
         # =========================
         self.client = mqtt.Client(client_id=f"mars_{mac}", clean_session=True)
         self.client.username_pw_set(username, password)
-
-        # Auto-Reconnect Settings
         self.client.reconnect_delay_set(min_delay=5, max_delay=60)
 
         # =========================
-        # TLS SETUP
+        # TLS SETUP vorbereiten
         # =========================
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        self.ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self.ctx.check_hostname = False
+        self.ctx.verify_mode = ssl.CERT_NONE
 
         base_path = os.path.dirname(__file__)
-        cert_file = os.path.join(base_path, "emqx-marspro.pem")
-        key_file = os.path.join(base_path, "emqx-marspro.key")
+        self.cert_file = os.path.join(base_path, "emqx-marspro.pem")
+        self.key_file = os.path.join(base_path, "emqx-marspro.key")
 
-        ctx.load_cert_chain(cert_file, keyfile=key_file)
+        print("📂 Zertifikat:", self.cert_file)
+        print("📂 Key:", self.key_file)
 
-        self.client.tls_set_context(ctx)
-
-        # =========================
-        # CALLBACKS
-        # =========================
-        self.client.on_connect = self._on_connect
-        self.client.on_disconnect = self._on_disconnect
-        self.client.on_message = self._on_message
-
-        # =========================
-        # START THREAD
-        # =========================
-        self._start_mqtt()
+        # 👉 Async Start (HA konform)
+        hass.async_create_task(self._async_setup())
 
     # =========================
-    # START MQTT LOOP
+    # ASYNC SETUP
+    # =========================
+    async def _async_setup(self):
+        try:
+            # Zertifikate NON-BLOCKING laden
+            await self.hass.async_add_executor_job(
+                self.ctx.load_cert_chain,
+                self.cert_file,
+                self.key_file
+            )
+
+            print("✅ Zertifikate geladen")
+
+            self.client.tls_set_context(self.ctx)
+
+            # Callbacks setzen
+            self.client.on_connect = self._on_connect
+            self.client.on_disconnect = self._on_disconnect
+            self.client.on_message = self._on_message
+
+            # MQTT starten
+            self._start_mqtt()
+
+        except Exception as e:
+            print("❌ TLS Setup Fehler:", e)
+
+    # =========================
+    # MQTT START THREAD
     # =========================
     def _start_mqtt(self):
         def run():
@@ -94,6 +110,8 @@ class MarsCoordinator(DataUpdateCoordinator):
                 return
 
             self.data = data["data"]
+
+            # 👉 HA informieren
             self.async_set_updated_data(self.data)
 
         except Exception as e:
